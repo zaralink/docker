@@ -1,0 +1,181 @@
+ubuntu-machine
+$ sudo apt-get update
+$ sudo apt-get install docker.io
+
+The docker swarm init --advertise-address option is used to specify the IP address 
+that the Swarm manager will advertise to other nodes in the cluster. 
+Run the following command on the master:
+
+$ docker swarm init --advertise-address=192.168.1.100 #replace the ip address with ip address of the master
+
+The above command will initialise the host as the master and advertise the information
+needed to set up communication with the slave nodes.
+
+Install docker on a slave node and run the command bellow:
+$ docker swarm join --token <token> <manager_ip>:<port>
+To confirm you have successfully initialized docker swarm:
+$ sudo docker node ls
+ID                            HOSTNAME        STATUS    AVAILABILITY   MANAGER STATUS   ENGINE VERSION
+v9huoy0x9pcz91g52r2b44j4o *   Docker-server   Ready     Active         Leader           23.0.3
+95h5d0lqqou45mgg07fae97sh     docker-slave    Ready     Active                          20.10.21
+
+creating a docker service
+===========================
+
+The docker service create command is used to create a new service on a Docker Swarm. 
+The basic syntax of the command is:
+
+$ docker service create --name <name-of-service> <image-name>
+Here's an example command that creates a new service named my-service with 3 replicas, using the nginx Docker image:
+
+$ sudo docker service create --name my-service --replicas 3 -p 80:80 nginx
+
+To confirm that service is created, run the command bellow:
+
+$ sudo docker service ls
+ID             NAME         MODE         REPLICAS   IMAGE          PORTS
+9rekolcd60ja   my-service   replicated   3/3        nginx:latest   *:80->80/tcp
+
+you can check the browser using both the master ip and slave ip addresses to 
+access nginx services. The docker swarm maintains the specified 3 containers running the
+configured service (nginx) at all times. If you delete one or all the containers,
+the swarm recreates them instantly within seconds, ensuring that there is no loss
+of service access. That is container orchestration using docker swarm.
+
+CREATE AN OVERLAY NETWORK NAED, my-overlay
+DEPLOY A WEBSITE CONTAINER IN THE overlay network
+image:hshar/webapp
+DEPLOY A DATABASE CONTAINER IN THEOVERLAY NETWORK
+image:hshar/mysql:56
+username:root
+password:intell
+MAKE CHANGES IN THE WEBSITE CODE TO POINT TO MYSQL service
+TEST THE CONFIGURATIONBY ENTERING VAUES N THE WEBSITE
+
+CREATE AN OVERLAY NETWORK NAED, my-overlay
+==========================================
+ubuntu@Docker-server:~$ sudo docker network create --driver overlay my-overlay
+ppw1nhatbdwim795aet8mslkj
+
+ubuntu@Docker-server:~$ sudo docker network ls
+NETWORK ID     NAME              DRIVER    SCOPE
+74cdfebf8ef2   bridge            bridge    local
+967492f81be0   docker_gwbridge   bridge    local
+b7d6e41b3408   host              host      local
+3lthgfaywul3   ingress           overlay   swarm
+ppw1nhatbdwi   my-overlay        overlay   swarm
+b1e264f34713   none              null      local
+
+DEPLOY A WEBSITE CONTAINER IN THE overlay network
+=================================================
+ubuntu@Docker-server:~$ sudo docker service create --name website --replicas 3 --network my-overlay -p 8000:80 hshar/webapp
+197nfx132al8yphwd5yauacyp
+overall progress: 3 out of 3 tasks
+1/3: running   [==================================================>]
+2/3: running   [==================================================>]
+3/3: running   [==================================================>]
+verify: Service converged
+
+DEPLOY A DATABASE CONTAINER IN THEOVERLAY NETWORK
+=================================================
+ubuntu@Docker-server:~$ sudo docker service create --name db --network my-overlay hshar/mysql:5.6
+im80xdg5loix5jk1z362rlhhg
+overall progress: 1 out of 1 tasks
+1/1: running   [==================================================>]
+verify: Service converged
+
+ubuntu@Docker-server:~$ sudo docker ps
+CONTAINER ID   IMAGE                 COMMAND                  CREATED              STATUS              PORTS      NAMES
+4f126c57cd73   hshar/mysql:5.6       "docker-entrypoint.s…"   About a minute ago   Up About a minute   3306/tcp   db.1.o6weo1eye1kifw6ju4vjbugdi
+96b739050598   hshar/webapp:latest   "/bin/sh -c 'apachec…"   12 minutes ago       Up 12 minutes       80/tcp     website.2.ehhnf1072lcaxuwqam8gu2x3z
+42ad6e33f255   nginx:latest          "/docker-entrypoint.…"   About an hour ago    Up About an hour    80/tcp     my-service.2.qsvi482qofdhlx97olfa1wm4q
+d9e6698e4cfb   nginx:latest          "/docker-entrypoint.…"   About an hour ago    Up About an hour    80/tcp     my-service.1.rskulugi70l3pdoahtl2er0yn
+
+ubuntu@Docker-server:~$ sudo docker exec -it 96b739050598 bash
+root@96b739050598:/# cd /var/www/html
+root@96b739050598:/var/www/html# ls
+index.php
+root@96b739050598:/var/www/html# nano index.php
+
+<html>
+<head>
+<title>Docker Sample App</title>
+
+<?php
+if($_SERVER['REQUEST_METHOD'] == "POST")
+{
+$servername = "db";
+$username = "root";
+$password = "intelli";
+$dbname = "docker";
+$name=$_POST["name"];
+$phone=$_POST["phone"];
+
+// Create connection
+$conn = new mysqli($servername, $username, $password, $dbname);
+// Check connection
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+On the slave: to verify webapp containar is running:
+
+ubuntu@docker-slave:~$ sudo docker ps
+CONTAINER ID   IMAGE                 COMMAND                  CREATED             STATUS             PORTS     NAMES
+833babd58966   hshar/webapp:latest   "/bin/sh -c 'apachec…"   28 minutes ago      Up 27 minutes      80/tcp    website.1.h28stx7oe3dlgv4yd0gbj8y1t
+77dbb36193e2   hshar/webapp:latest   "/bin/sh -c 'apachec…"   28 minutes ago      Up 27 minutes      80/tcp    website.3.ia5rh7m2zwgn23nxqmh6mlfki
+66267ba5a519   nginx:latest          "/docker-entrypoint.…"   About an hour ago   Up About an hour   80/tcp    my-service.3.3aqso6qevlu3g0d1ni74ikbjv
+
+exec into the database container and log into mysql
+
+root@4f126c57cd73:/# mysql -u root -p
+Enter password:
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 3
+Server version: 5.5.62 MySQL Community Server (GPL)
+
+mysql> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
++--------------------+
+3 rows in set (0.01 sec)
+
+mysql> create database db;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> use db;
+Database changed
+mysql> CREATE TABLE emp (name VARCHAR(20), phone VARCHAR(20));
+
+or
+
+CREATE TABLE emp (
+  name VARCHAR(20),
+  phone VARCHAR(20)
+);
+
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> select * from emp;
+Empty set (0.00 sec)
+
+access the webapp through the browser using the server ip address and port 8000. Make some entries and then 
+view those entries from the database container (backend)
+mysql> select * from emp;
++----------+----------------+
+| name     | phone          |
++----------+----------------+
+| chidiogo | 3125975582     |
+| stephen  | 3124451012     |
+| Anna     | 3125975582     |
+| dio      | (181) 277-3856 |
++----------+----------------+
+4 rows in set (0.00 sec)
+
+
+
+
